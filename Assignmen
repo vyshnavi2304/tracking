@@ -1,0 +1,56 @@
+import cv2
+import torch
+from sort import Sort
+import numpy as np
+
+# Load YOLOv5 model (or replace with YOLOv8 if preferred)
+model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
+# Initialize SORT tracker
+tracker = Sort()
+
+def process_frame(frame):
+    # Convert frame to RGB
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    # Perform detection
+    results = model(rgb_frame)
+    detections = results.xyxy[0].cpu().numpy()  # Bounding boxes, confidences, class ids
+
+    # Prepare detections for SORT
+    bbox_xywh = []
+    for det in detections:
+        x1, y1, x2, y2, conf, cls = det
+        if conf > 0.5:  # Confidence threshold
+            bbox_xywh.append([x1, y1, x2-x1, y2-y1])
+    bbox_xywh = np.array(bbox_xywh)
+
+    # Update tracker
+    trackers = tracker.update(bbox_xywh)
+
+    # Draw results
+    for track in trackers:
+        x, y, w, h, track_id = track
+        x1, y1, x2, y2 = int(x), int(y), int(x + w), int(y + h)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.putText(frame, f'ID {int(track_id)}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+    return frame
+
+def main(video_path, output_path):
+    cap = cv2.VideoCapture(video_path)
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    out = cv2.VideoWriter(output_path, fourcc, 30.0, (int(cap.get(3)), int(cap.get(4))))
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        # Process frame
+        result_frame = process_frame(frame)
+        # Write frame to output video
+        out.write(result_frame)
+
+    cap.release()
+    out.release()
+    cv2.destroyAllWindows()
+
+# Replace with your video file paths
+main('input_video.mp4', 'output_video.avi')
